@@ -8,10 +8,12 @@
   :description "Various fixes and additions not mature enough to add to my branch"
   :pathname "."
   :components ((:file "accept-values-pane")
+               ;; (:file "subset-completion")  Merged into my-version branch of McClim
                (:file "centering-output")
                (:File "graph-formatting")
                (:file "howie-patches")
                (:File "window-inside-functions")
+               (:File "more-additions")
                ))
                
 

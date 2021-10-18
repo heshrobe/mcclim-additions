@@ -10,7 +10,8 @@
   ((a :accessor a :initform 5)
    (b :accessor b :initform 2)
    (c :accessor c :initform 3)
-   (d :accessor d :initform 4))
+   (d :accessor d :initform 4)
+   (e :accessor e :initform 'a))
   (:top-level (test-avv-top-level))
   (:menu-bar nil)
   (:command-table (test-avv :inherit-from (clim-internals::accept-values-pane clim-listener::listener)))
@@ -35,7 +36,11 @@
                     :display-function '(clim-internals::accept-values-pane-displayer
                                         :displayer accept-values-diplayer-2
                                         ))
-   )
+   (interactor :interactor
+               :borders t
+               :scroll-bars :vertical
+	       :height '(5 :line)
+               :max-height '(5 :line)))
   (:layouts
    (normal
     (clim:vertically ()
@@ -43,7 +48,8 @@
       (:fill  (clim:horizontally ()
                 (.5 accept-values-1)
                 (.5 accept-values-2)))
-      pointer-doc))))
+      pointer-doc
+      interactor))))
 
 (defmethod accept-values-diplayer-1 ((frame test-avv) stream)
   (setf (a frame) (clim:accept '(integer 0 20) :stream stream :prompt "A" :view clim:+slider-View+ :Default (a frame)))
@@ -55,20 +61,31 @@
   (setf (c frame) (clim:accept 'integer :stream stream :prompt "C" :view clim:+textual-dialog-view+ :default (c frame)))
   (fresh-line stream)
   (setf (d frame) (clim:accept 'integer :stream stream :prompt "D" :view clim:+textual-dialog-view+ :default (d frame)))
-  )
+  (fresh-line stream)
+  ;; This is here to illustrate that having a gadget conditionalized doesn't currently work.
+  ;; There was a problem with option-pane-view that I've since fixed, to check that it still works
+  ;; undo the conditionalization
+  (setf (e frame) (clim:accept `(clim:member a b c d e)
+                                 :stream stream
+                                 :view #-mcclim clim:+textual-view+ #+mcclim clim:+option-pane-view+
+                                 :prompt "Which"
+                                 :default (e frame))))
 
 (defmethod test-avv-shower ((frame test-avv) stream)
-  (clim:formatting-table (stream)
+  (formatting-table (stream)
     (clim:formatting-row (stream)
       (clim:formatting-cell (stream) (write-string "A" stream))
       (clim:formatting-cell (stream) (write-string "B" stream))
       (clim:formatting-cell (stream) (write-string "C" stream))
-      (clim:formatting-cell (stream) (write-string "D" stream)))
+      (clim:formatting-cell (stream) (write-string "D" stream))
+      (clim:formatting-cell (stream) (write-string "E" stream)))
     (clim:formatting-row (stream)
       (clim:formatting-cell (stream) (princ (a frame) stream))
       (clim:formatting-cell (stream) (princ (b frame) stream))
       (clim:formatting-cell (stream) (princ (c frame) stream))
-      (clim:formatting-cell (stream) (princ (d frame) stream)))))
+      (clim:formatting-cell (stream) (princ (d frame) stream))
+      (clim:formatting-cell (stream) (princ (e frame) stream))
+      )))
 
 
 (defmethod test-avv-top-level ((frame test-avv) &REST OPTIONS)
@@ -77,7 +94,10 @@
          :prompt ">"
          OPTIONS))
 
-(defun run-avv-test (&key
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *avv-frame* nil))
+
+(defun test-avv-pane (&key
 		     (new-process t)
 		     (debugger t)
 		     (width 790)
@@ -92,6 +112,7 @@
 					     :frame-manager fm
 					     :width width
 					     :height height)))
+    (setq *avv-frame* frame)
     (flet ((run ()
 	     (let ((*package* (find-package package)))
 	       (unwind-protect
@@ -114,4 +135,4 @@
     (setq max (clim:accept '(integer 0 20) :default max :prompt "Max" :stream stream))
     (when (< max min)
       (rotatef min max))
-  (values min max))
+  (values min max)))

@@ -50,6 +50,11 @@
 (defmethod window-inside-height ((stream clim-stream-pane))
   (bounding-rectangle-height (window-viewport stream)))
 
-(export '(window-inside-height window-inside-width window-set-inside-size window-inside-size window-inside-bottom window-inside-right window-inside-top window-inside-left window-inside-edges window-viewport-position))
-(import '(window-inside-height window-inside-width window-set-inside-size window-inside-size window-inside-bottom window-inside-right window-inside-top window-inside-left window-inside-edges window-viewport-position) 'clim)
-(export '(window-inside-height window-inside-width window-set-inside-size window-inside-size window-inside-bottom window-inside-right window-inside-top window-inside-left window-inside-edges window-viewport-position) 'clim)
+(export '(window-inside-height window-inside-width window-set-inside-size window-inside-size window-inside-bottom window-inside-right
+          window-inside-top window-inside-left window-inside-edges window-viewport-position))
+(import '(window-inside-height window-inside-width window-set-inside-size window-inside-size window-inside-bottom window-inside-right
+          window-inside-top window-inside-left window-inside-edges window-viewport-position)
+        'clim)
+(export '(window-inside-height window-inside-width window-set-inside-size window-inside-size window-inside-bottom window-inside-right
+          window-inside-top window-inside-left window-inside-edges window-viewport-position)
+        'clim)

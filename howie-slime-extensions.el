@@ -41,8 +41,27 @@
 (add-hook 'slime-event-hooks 'howie-slime-repl-event-hook-function)
 
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; More general undefine capability
+;;;  e.g. undefine methods, etc.
+;;;
+;;; Send the whole definition to the swank side
+;;; let the swank side figure out what to do
+;;;
+;;; The Allegro eli versiom of this has lisp
+;;; send back a form that performas the required
+;;; and inserts it in the buffer
+;;; for a start, let's just have the swank side do it's thing
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-
-
+;;;   "Undefine the function, method, etc. that the point is within"
+(defun undefine-definition ()
+  (interactive)
+  (beginning-of-defun)
+  (let ((thing (thing-at-point 'sexp t)))
+    (slime-eval-async `(swank:undefine-definition ,thing)
+      (lambda (result) (message "%s" result)))))
 
 

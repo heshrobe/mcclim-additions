@@ -9,6 +9,11 @@
 
 (in-package :clim-internals)
 
+
+;;; Apparently (10/8/2021) the distributed version works
+;;; Except for not giving the option to override the prompt
+
+
 (define-presentation-type sequence-enumerated (&rest types)
   :options ((separator #\,) (echo-space t)(prompt nil))
   :inherit-from 't
@@ -18,33 +23,25 @@
                                     stream
                                     (view textual-view)
                                     &key)
-  (loop
-     with element = nil and element-type = nil
-       and separators = (list separator)
-     for type-tail on types
-     for (this-type) = type-tail
-     do (setf (values element element-type)
-              (accept this-type
-                      :stream stream
-                      :view view
-                      :prompt prompt
-                      :display-default nil
-                      :additional-delimiter-gestures separators))
-     collect element into sequence-val
-     do (progn
-          (when (not (eql (peek-char nil stream nil nil) separator))
-            (loop-finish))
-          (read-char stream)
-          (when echo-space
-            ;; Make the space a noise string
-            (input-editor-format stream " ")))
-     finally (if (cdr type-tail)
-                 (simple-parse-error "Input ~S too short for ~S."
-                                     sequence-val
-                                     types)
-                 (return sequence-val))))
-
-
+  (loop with separators = (list separator)
+        for (first-type . rest-types) on types
+        for (element element-type)
+           = (multiple-value-list
+              (accept first-type :stream stream :view view
+                                 :prompt prompt :display-default nil
+                                 :additional-delimiter-gestures separators))
+        collect element into sequence-val
+        do (let ((gesture (stream-read-gesture stream :peek-p t)))
+             (when (not (eql gesture separator))
+               (loop-finish))
+             (stream-read-gesture stream)
+             (when echo-space
+               ;; Make the space a noise string
+               (input-editor-format stream " ")))
+        finally (if rest-types
+                    (simple-parse-error "Input ~S too short for ~S."
+                                        sequence-val types)
+                    (return sequence-val))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -56,6 +53,13 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (in-package :clim-internals)
+
+
+#|
+
+apparently this is now identical to the distribution's code
+there was an issue about the :documentation keyword not being
+allowed somewhere but allowed elsewhere but maybe that's resolved
 
 (defun accept-form-for-argument (stream arg)
   (let ((accept-keys '(:default :default-type :display-default
@@ -87,32 +91,33 @@
 ;;; *unsupplied-argument-marker*. command-arg is the current value for the
 ;;; argument, originally bound to original-command-arg and now possibly
 ;;; changed by the user.
+;;; Is :documentation an acceptable keyword?
 
-(defun accept-form-for-argument-partial (stream ptype-arg command-arg
-					 original-command-arg )
+(defun accept-form-for-argument-partial
+    (stream ptype-arg command-arg original-command-arg query-identifier)
   (let ((accept-keys '(:default :default-type :display-default
-		       :prompt
-		       ;;:documentation
-		       :insert-default)))
-    (destructuring-bind (name ptype &rest key-args)
-	ptype-arg
+		       :prompt :documentation :insert-default)))
+    (destructuring-bind (name ptype &rest key-args) ptype-arg
       (declare (ignore name))
-      (let ((args (loop
-		     for (key val) on key-args by #'cddr
-		     if (eq key :default)
-		       append `(:default (if (eq ,command-arg
-						 *unsupplied-argument-marker*)
-					     ,val
-					     ,command-arg))
-		     else if (member key accept-keys :test #'eq)
-		       append `(,key ,val))))
-	(setq args (append args `(:query-identifier ',(gensym "COMMAND-PROMPT-ID"))))
-	(if (member :default args :test #'eq)
+      (let* ((defaultp nil)
+             (args (loop for (key val) on key-args by #'cddr
+                         if (eq key :default)
+                           do (setf defaultp t)
+                           and append `(:default (if (eq ,command-arg
+                                                         *unsupplied-argument-marker*)
+                                                     ,val
+                                                     ,command-arg))
+                         else if (member key accept-keys :test #'eq)
+                                append `(,key ,val)))
+             (args (append args `(:query-identifier ',query-identifier))))
+	(if defaultp
 	    `(accept ,ptype :stream ,stream ,@args)
 	    `(if (eq ,original-command-arg *unsupplied-argument-marker*)
 		 (accept ,ptype :stream ,stream ,@args)
 		 (accept ,ptype :stream ,stream :default ,command-arg
 			 ,@args)))))))
+
+|#
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -267,29 +272,35 @@
 
 (in-package :clim-listener)
 
-(define-listener-command (com-edit-definition
-			  :name "Edit Definition"
-			  :menu t
-			  :provide-output-destination-keyword nil)
-  ((function-name 'function-name :prompt "function name"))
+(defun edit-function (function-name)
   (clim-sys:make-process (lambda ()
 			   #+swank
 			   (swank::with-connection ((swank::default-connection))
 			     (swank::ed-in-emacs function-name))
 			   #-swank
-			   (ed function-name))))
+			   (ed pathname))))
 
-(define-listener-command (com-edit-file
-			  :name "Edit File"
+(define-listener-command (com-edit-definition
+			  :name "Edit Definition"
 			  :menu t
 			  :provide-output-destination-keyword nil)
-  ((pathname 'pathname  :prompt "pathname"))
+    ((function-name 'function-name :prompt "function name"))
+  (edit-function function-name))
+
+(defun edit-file (pathname)
   (clim-sys:make-process (lambda ()
 			   #+swank
 			   (swank::with-connection ((swank::default-connection))
 			     (swank::ed-in-emacs pathname))
 			   #-swank
 			   (ed pathname))))
+
+(define-listener-command (com-edit-file
+			  :name "Edit File"
+			  :menu t
+			  :provide-output-destination-keyword nil)
+    ((pathname 'pathname  :prompt "pathname"))
+  (edit-file pathname))
 
 ;;; Design note: A :write-string event whose first argument is :to-buffer followed by <buffer-name>
 ;;; Has the effect of writing the string in to the specified buffer, creating it if necessary
@@ -308,6 +319,58 @@
 
 (export 'with-output-to-emacs-buffer)
 (import 'with-output-to-emacs-buffer 'clim-user)
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Edit System Command
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define-command (com-edit-system :command-table listener :name t)
+    ((system 'asdf-system
+	     :default-type 'system
+	     ;; :provide-default t
+             )
+     &key
+     (include-components 'boolean
+			 :default t
+			 ;; :documentation "Edit files in component systems"
+                         )
+     ;; (silent 'boolean
+     ;;         :default t :mentioned-default t
+     ;;         ;; :documentation "Suppress all terminal output"
+     ;;         )
+     )
+  (let ((system (asdf:find-system system)))
+    (assert (and (not (null system)) (not (stringp system))) ()
+            "There is no system named ~A" system)
+    (let ((files (all-files-in-system system include-components)))
+      (setq files (sort files #'string-lessp :key #'pathname-name))
+      (setq files (multiple-choose-files files))
+      (loop for file in files do (edit-file file)))
+    ))
+
+(defun multiple-choose-files (files)
+  (let ((ht (make-hash-table :test #'equal)))
+    (loop for file in files
+	  do (setf (gethash file ht) nil))
+    (let ((stream *query-io*))
+      (accepting-values (stream :own-window t :resynchronize-every-pass t :align-prompts :left)
+        (loop for file in files
+	      for pathname = (namestring file)
+	      for new-value = (clim:accept '(member-alist (("yes" . t) ("no" . nil)))
+                                           :view +radio-box-view+
+                                           :prompt (pathname-name pathname)
+				           :default (gethash file ht)
+				           :stream stream)
+	      do (terpri stream)
+	      do (setf (gethash file ht) new-value))))
+      (loop for file in files
+	  when (gethash file ht)
+	  collect file)))
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -454,6 +517,120 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
+;;; Find string command from Portable Lisp Environment
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; This allocates a character an adjustable array
+;;; and fills it character by character to avoid
+;;; consing a new one each time as read-line would.
+;;; I guess this could also be managed by a resource
+;;; to avoid creating a new array for each file.
+
+
+(defun search-file (pathname stream strings conjunction)
+  (with-open-file (fs pathname :if-does-not-exist nil)
+    (when fs
+      (let ((line-number 0)
+	    (printed nil))
+	(flet ((search-line (line)
+		 (when (if (eql conjunction 'and)
+			   (every #'(lambda (string) (search string line :test #'char-equal))
+				  strings)
+			   (some #'(lambda (string) (search string line :test #'char-equal))
+				 strings))
+		   (unless printed
+		     (with-output-as-presentation (stream pathname 'pathname)
+		       (format stream "~%In file ~A~%" pathname))
+		     (setq printed t))
+		   (format stream "#~3D: " line-number)
+		   (write-string line stream)
+		   (write-char #\Newline stream)
+		   (force-output stream))
+		 (incf line-number)))
+	  (declare (dynamic-extent #'search-line))
+	  (loop for line = (read-line fs nil 'eof)
+                until (eql line 'eof)
+		do (search-line line)))))))
+
+
+(defmethod all-files-in-system ((system asdf/system:system) &optional (include-components? nil))
+  (let ((answer nil) (traversed nil))
+    (labels ((do-one (component)
+	       (unless (member component traversed)
+		 (push component traversed)
+		 (typecase component
+		  (asdf/lisp-action:cl-source-file
+		   (pushnew (translate-logical-pathname (asdf/component:component-pathname component)) answer))
+		  ((or asdf/system:system asdf/component:component)
+		   (when (or (typep component 'asdf/component:component) include-components?)
+		     (let ((children (asdf/component:component-children component)))
+		       (loop for thing in children do (do-one thing)))))))))
+      (do-one system))
+    answer))
+
+(defmethod all-files-in-system ((system asdf/system:system) &optional (include-components? nil))
+  (let ((answer nil) (traversed nil))
+    (labels ((do-one (component)
+	       (unless (member component traversed)
+		 (push component traversed)
+		 (typecase component
+		  (asdf/lisp-action:cl-source-file
+		   (pushnew (translate-logical-pathname (asdf/component:component-pathname component)) answer))
+		  ((or asdf/system:system asdf/component:component)
+		   (when (or (typep component 'asdf/component:component) include-components?)
+		     (let ((children (asdf/component:component-children component)))
+		       (loop for thing in children do (do-one thing)))))))))
+      (do-one system))
+    answer))
+
+(define-command (com-find-string :command-table lisp-commands :name t)
+    ((strings '(sequence string)
+	      :prompt "substring(s)"
+	      ;; :documentation "Substrings to search for"
+              )
+     &key
+     (files '(sequence pathname)
+	    :default nil
+	    :prompt "file(s)"
+	    ;; :documentation "Files to search through"
+            )
+     (systems '(sequence (type-or-string asdf-system))
+	      :default nil
+	      :prompt "systems(s)"
+	      ;; :documentation "Systems to search through"
+              )
+     (conjunction '(member and or)
+		  :default 'and
+		  ;; :documentation "AND or OR of the strings"
+                  )
+     (include-components 'boolean
+			 :default t
+			 ;;:documentation "Yes or No"
+			 ))
+  (with-frame-standard-output (stream)
+    (when files
+      (dolist (pathname files)
+	(if (wild-pathname-p pathname)
+	  (dolist (p (directory pathname))
+	    (search-file p stream strings conjunction))
+	  (search-file pathname stream strings conjunction))))
+    (when systems
+      (flet ((search-system-file (pathname)
+               (search-file (typecase pathname
+        		      (logical-pathname (translate-logical-pathname pathname))
+        		      (t pathname))
+        		    stream strings conjunction)))
+        (declare (dynamic-extent #'search-system-file))
+        (dolist (system systems)
+          (loop for pathname in (all-files-in-system system include-components)
+              do (search-system-file pathname)))))
+    ))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
 ;;; Find symbols command from Portable Lisp Environment
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -464,26 +641,34 @@
 				  :command-table lisp-commands
 				  :provide-output-destination-keyword t)
     ((strings '(sequence string) :prompt "substring(s)"
-	      :documentation "Substrings of the symbol to find")
+	                         ;; :documentation "Substrings of the symbol to find"
+                                 )
      &key
      (packages '(token-or-type (:all) (sequence package))
 	       :default :all :prompt "packages to search"
-	       :documentation "Packages in which to search")
+	       ;; :documentation "Packages in which to search"
+               )
      (conjunction '(member and or) :default 'and
-		  :documentation "AND or OR of the strings")
+		  ;; :documentation "AND or OR of the strings"
+                  )
      (imported-symbols 'boolean :default nil :mentioned-default t
-		       :documentation "Search imported symbols")
+		       ;; :documentation "Search imported symbols"
+                       )
      (used-by 'boolean> :default nil :mentioned-default t
-	      :documentation "Search packages used by these packages")
+	      ;; :documentation "Search packages used by these packages"
+              )
      (using 'boolean :default nil :mentioned-default t
-	    :documentation "Search packages that use these packages")
+	    ;; :documentation "Search packages that use these packages"
+            )
      (types '(sequence (member-alist (("variable" . :variable) ("Function" . :function)
 			("Class" . :class) ("Presentation Type" . :presentation-type)
 			("Unbound" . :unbound)  ("All" . :all))))
 	    :default '(:all) :prompt "symbol types"
-	    :documentation "Kinds of symbols to search for")
+	    ;; :documentation "Kinds of symbols to search for"
+            )
      (external-symbols 'boolean :default t :mentioned-default t
-		       :documentation "Don't show internal symbols of a package"))
+		       ;; :documentation "Don't show internal symbols of a package"
+                       ))
   (with-frame-standard-output (stream)
     (when (null types) (setq types '(:all)))
     (with-text-face (stream :italic)
@@ -884,6 +1069,32 @@
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+(defun find-all-classes ()
+  (let ((classes nil))
+    (labels ((walk-classes (c)
+               (pushnew c classes)
+	       (mapc #'walk-classes (c2mop::class-direct-subclasses c))))
+      (walk-classes (find-class t)))
+    classes))
+
+(define-presentation-method accept
+    ((type class) stream (view textual-view) &key)
+  (let* ((all-classes (find-all-classes)))
+    (multiple-value-bind (class success string)
+        (completing-from-suggestions (stream :partial-completers '(#\- #\space)
+					     :allow-any-input t)
+          (map nil #'(lambda (class)
+		       (suggest (symbol-name (clim-lisp:class-name  class)) class))
+	       all-classes))
+      (declare (ignore success))
+      (unless class
+        (ignore-errors
+         (setq class (find-class (read-from-string string) :errorp nil)))
+        (unless class
+	  (simple-parse-error "~A is not the name of a class" string)))
+      class)))
+
 (define-presentation-method accept
     ((type class) stream (view textual-view) &key default)
   (let* ((class-name (accept 'symbol :stream stream :view view
@@ -899,6 +1110,45 @@
   (if (typep class 'class)
     (prin1 (class-name class) stream)
     (prin1 class stream)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Generic Function Accept Method
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun find-all-generic-functions ()
+  (let ((gfs nil))
+    (labels ((walk-classes (c)
+	       (dolist (m (c2mop:specializer-direct-methods c))
+		 (pushnew (c2mop:method-generic-function m) gfs))
+	       (mapc #'walk-classes (c2mop:class-direct-subclasses c))))
+      (walk-classes (find-class t))
+      gfs)))
+
+;;; in contrast to the method in McCLim (listener)
+;;; this one actually does completion.  The drawback
+;;; is that it has to compute the entire set of generic functions
+;;; each time.  There might be a way to cache that and notice when a change
+;;; has happened in order to recompute.
+(define-presentation-method accept
+    ((type generic-function) stream (view textual-view) &key)
+  (multiple-value-bind (gf success string)
+      (completing-from-suggestions (stream :partial-completers '(#\-)
+					   :allow-any-input t)
+        (loop for gf in (find-all-generic-functions)
+              for name = (c2mop:generic-function-name gf)
+              unless (consp name)
+                do (suggest (symbol-name name) gf)))
+    (declare (ignore success))
+    (unless gf
+      (ignore-errors
+        (setq gf (and (fboundp (read-from-string string))
+		      (fdefinition (read-from-string string)))))
+      (unless gf
+	(simple-parse-error "~A is not the name of a generic function" string)))
+    gf))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1057,12 +1307,15 @@
      &key
      (qualifiers '(clim:sequence symbol)
 		 :default nil))
-  (let ((methods (find-applicable-methods generic-function specializers)))
+  (let ((methods (c2mop:find-applicable-methods generic-function specializers qualifiers)))
     (loop for method in methods
-	unless (set-exclusive-or (method-qualifiers method) qualifiers)
 	do (remove-method generic-function method))))
 
-(defun find-applicable-methods (generic-function arg-specs)
+
+(in-package :c2mop)
+
+;;; This should be in the same package as remove method or maybe in c2mop
+(defun find-applicable-methods (generic-function arg-specs qualifiers)
   (let ((answers nil))
     (loop for method in (c2mop:generic-function-methods generic-function)
        when (loop for specializer in (c2mop:method-specializers method)
@@ -1072,9 +1325,142 @@
 			       (eql arg (c2mop:eql-specializer-object specializer)))
 			  (and (eq arg-type :class)
 			       (eql arg specializer))))
-
-	    do (push method answers))
+         do (unless (set-exclusive-or (method-qualifiers method) qualifiers)
+	      (push method answers)))
     answers))
+
+(export 'c2mop::find-applicable-methods)
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Swank Support for General Purpose undefining command
+;;;
+;;; The basic structure is a top level dispatcher that is given the whole defining
+;;; form (which SLIME has found and called SWANK with).  Curretly SLIME just
+;;; looks backward for a line that starts with a defun and the goes forware one sexp.
+;;;
+;;; SWANK's assumption is that the first token in that form is the definition type.
+;;; So it calls a method whose first argument is discriminated by that type
+;;; and whose second argument is the whole form.
+;;;
+;;; The first dispatch just extracts all the relevant information
+;;; and returns 2 things:
+;;;  1) A keyword that is used to find the right handler
+;;;  2) All the information that handler will need to do its job
+;;;
+;;; Then it does another eql type dispatch to find the code
+;;; that actually does the undefining.
+;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;;; To do: Switch the 2nd level handlers to actually do the work
+
+
+(in-package :swank)
+
+(export '(swank::undefine-definition))
+
+(defgeneric form-parser (key form))
+(defgeneric definition-undefining-form (type form  do-it?))
+
+(defslimefun undefine-definition (definition-string)
+  (let ((form (if (stringp definition-string) (from-string definition-string) definition-string)))
+    (multiple-value-bind (fspec type) (form-parser (first form) form)
+      (let ((answer (definition-undefining-form type fspec t)))
+        ;; this will just the undefning form into the minibuffer
+        answer))))
+
+
+;;; The parsers
+
+(defmethod form-parser ((key t) form) (values (second form) :operator))
+
+(defmethod form-parser ((key (eql 'defun)) form) (values (second form) :operator))
+
+(defmethod form-parser ((key (eql 'defgeneric)) form) (values (second form) :operator))
+
+;;; Need to sync this up with the code in the lisp-listener command undefine-method
+(defmethod form-parser ((key (eql 'defmethod)) form)
+  (let* ((non-body (rest form))
+         (name (pop non-body))
+         qualifiers
+         specializers)
+    (loop for thing = (pop non-body)
+          if (symbolp thing)
+            do (push thing qualifiers)
+          else do (setq specializers thing)
+                  (return))
+    (values (list name                  ;generic function name
+                  specializers          ;specializers
+                  (reverse qualifiers)  ;qualifiers if any
+                  )
+            :defmethod)))
+
+
+(defmethod form-parser ((key (eql 'defclass)) form)
+  (values (second form) :class))
+
+
+
+
+
+;;; The handlers: do the dirty work and the return a form to be echo'd in the mini buffer
+
+(defmethod definition-undefining-form (type fspec do-it?)
+  (declare (ignore do-it?))
+  (format nil  "Do not know how to kill definition ~S of type ~S." fspec type))
+
+(defmethod definition-undefining-form ((type (eql :operator)) fspec do-it?)
+  (when do-it? (fmakunbound fspec))
+  `(fmakunbound ',fspec))
+
+
+
+(defmethod definition-undefining-form ((type (eql :class)) fspec do-it?)
+  (when do-it? (setf (find-class fspec) nil))
+  `(setf (find-class ',fspec) nil))
+
+
+
+;;; This needs to get fixed
+(defmethod definition-undefining-form ((type (eql :defmethod)) fspec do-it?)
+  (destructuring-bind (generic-function-name specializers qualifiers) fspec
+    (when do-it?
+      (let* ((generic-function (fdefinition generic-function-name))
+             (methods (c2mop:find-applicable-methods generic-function
+                                                     (fix-up-specializers specializers)
+                                                     qualifiers)))
+        (loop for method in methods do (remove-method generic-function method)))
+      `(undefmethod ,generic-function-name ,@qualifiers ,specializers))))
+
+;;; Code to put this into the same form as the clim-listener command?
+(defun fix-up-specializers (specializers)
+  (loop for specializer in specializers
+        collect (cond
+                  ((symbolp specializer) (list :class (find-class t)))
+                  ((eql (first (second specializer)) 'eql) (list :object (second (second specializer))))
+                  (t (find-class (second specializer))))))
+
+;;; Don't need this since the form parser macroexpands it and then treats it like a
+;;; normal defmethod.  The only reason to have this is if you want to feed back
+;;; a more specific undefining form to the editor.
+;;;
+;;; (defmethod definition-undefining-form (fspec (type (eql :joshua-define-predicate-method)))
+;;;   (let* ((method (third (macroexpand `(joshua::define-predicate-method ,(second fspec) ,(third fspec)))))
+;;;  	 (real-fspec (excl::defmethod-parser method))
+;;;  	 (signature (fixed-defmethod-fspec real-fspec)))
+;;;     `(fmakunbound ',signature)
+;;;     ))
+
+
+
+
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -1082,38 +1468,35 @@
 ;;;  In MccLim/apps/clim-listener/listener.lisp
 ;;;  This method is bogus and should be removed
 ;;;
+;;; Actually on further consideration 10/9/2021, it's specialized on view = listener-view
+;;; which isn't the case while accepting command arguments, so this doesn't
+;;; break undefine method as I previously thought.
+;;;
+;;; The interactor/listener pane in the listener uses this view and only
+;;; to change the behavior of how sequence is accepted and presented.
+;;;
+;;; Here's the discussion about it:
+;;;
+;;; run-command doesn't use it because it doesn't supply the listener-view. This method is used to read a sequence if accept is typed in the listener directly, i.e.:
+;;; clim-user> (accept '(sequence integer))
+;;; Enter sequence: 1, 2, 3 ;; --> error Input 1 is not of type (sequence integer)
+;;;
+;;; clim-user> (accept '(sequence integer))
+;;; Enter sequence: (1 2 3)
+;;; 0 (1 2 3)
+;;; 1 (sequence integer)
+;;;
+;;; This abstraction has been introduced in the commit 6769f25 that replaces a hack hackish-present with a proper view specialization. The hacked function was:
+;;;
+;;; (defun hackish-present (object)
+;;;   "Hack of the day.. let McCLIM determine presentation type to use, except for lists, because the list presentation method is inappropriate for lisp return values."
+;;;   (typecase object
+;;;     (sequence (present object 'expression))
+;;;     (t (present object))))
+;;; And hackish-present was introduced itself in da4a320 that in display-values instead of presenting the value as expression
+;;; takes the detour to present lists as expressions and everything else for their presentation type. This is to ensure that
+;;; (present #p"/tmp")
+;;;  will output a pathname (and not the expression), so we can use it as a presentation of type "pathname" with translators and such.
+;;; Does this code impact listener in some way that would be a downside?
+;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(in-package :clim-listener)
-
-;;; This is the existing code
-;; (define-presentation-method accept :around
-;;   ((type sequence) stream (view listener-view) &key default default-type)
-;;   (declare (ignorable default default-type))
-;;   ;; oh, my word.  although TYPE here might look like it's bound to
-;;   ;; the presentation type itself, in fact it is bound to the
-;;   ;; parameter of the SEQUENCE presentation type.  We need the
-;;   ;; presentation type itself, so we reconstruct it.
-;;   (call-next-method)
-;;   ;; (let ((ptype (list 'sequence type)))
-;;   ;;   (let* ((token (read-token stream))
-;;   ;; 	   (result (handler-case (read-from-string token)
-;;   ;; 		     (error (c)
-;;   ;; 		       (declare (ignore c))
-;;   ;; 		       (simple-parse-error
-;;   ;; 			"Error parsing ~S for presentation type ~S"
-;;   ;; 			token ptype)))))
-;;   ;;     (if (presentation-typep result ptype)
-;;   ;; 	  (values result ptype)
-;;   ;; 	  (input-not-of-required-type result ptype))))
-;;   )
-
-;;; This removes the method
-(loop for method in (find-applicable-methods #'clim-internals::%accept
-					     `((:class ,(find-class 'CLIM-INTERNALS::|(presentation-type COMMON-LISP::SEQUENCE)|))
-					       (:class ,(find-class t))
-					       (:class ,(find-class t))
-					       (:class ,(find-class 'LISTENER-VIEW))))
-   for qualifiers = (method-qualifiers method)
-   when (null (set-exclusive-or '(:around ) qualifiers))
-   do (remove-method #'clim-internals::%accept method))
