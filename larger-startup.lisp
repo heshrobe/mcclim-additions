@@ -42,3 +42,5 @@
     )
   (apply (intern (string-upcase "run-listener") (find-package 'clim-listener))
          '( :new-process t)))
+
+(startup)
