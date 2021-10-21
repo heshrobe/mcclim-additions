@@ -1291,6 +1291,9 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (export '(intern (string-upcase "find-applicable-methods") (find-package :c2mop))))
+
 (define-command (com-undefine-method
 		 :name t
 		 :command-table lisp-commands
@@ -1323,7 +1326,7 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 	      (push method answers)))
     answers))
 
-(export 'c2mop::find-applicable-methods)
+
 
 
 
