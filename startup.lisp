@@ -2,6 +2,16 @@
 
 (in-package :common-lisp-user)
 
+;;; The following lines added by ql:add-to-init-file:
+#-quicklisp
+(let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp"
+                                       (user-homedir-pathname))))
+  (when (probe-file quicklisp-init)
+    (load quicklisp-init)))
+
+
+
+
 (defun startup ()
   (setq *compile-print* nil)
   (ql:quickload '(:mcclim :clim-listener :cl-json))
@@ -29,8 +39,5 @@
     (load "~/Research-Projects/ASIST/guide/guide.asd")
     (asdf:load-system :guide)
     )
-  ;; This file contains things that don't compile
-  ;; check if some of it was merged in successfully
-  ;;(load "~/quicklisp/local-projects/clim-additions/or-type.lisp")
   (apply (intern (string-upcase "run-listener") (find-package 'clim-listener))
          '( :new-process t)))
