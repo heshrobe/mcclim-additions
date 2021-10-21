@@ -1292,7 +1292,8 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (export (intern (string-upcase "find-applicable-methods") (find-package :c2mop))))
+  (export (intern (string-upcase "find-applicable-methods") (find-package :c2mop))
+          :c2mop))
 
 (define-command (com-undefine-method
 		 :name t
