@@ -521,12 +521,19 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; This allocates a character an adjustable array
-;;; and fills it character by character to avoid
-;;; consing a new one each time as read-line would.
-;;; I guess this could also be managed by a resource
-;;; to avoid creating a new array for each file.
+;;; This is a hack that allows one to distinguish betwee two distinct
+;;; uses of :depends-on in asdf:defsystem:
+;;; Case 1: The depended on system is really a component of the system but is
+;;;         broken out to facilitate loading only part of the system
+;;; Case 2: The depeded on system is a framework that must be loaded for this
+;;;         system to run
+;;;
+;;; The reason for making the distinction is so that if we want to find all the files
+;;; in a system, we can map over the depends-on field but only follow those that are
+;;; Case 1.
 
+(export (intern (string-upcase "subsystem") 'asdf/interface) 'asdf/interface)
+(defclass asdf:subsystem (asdf:system) ())
 
 (defun search-file (pathname stream strings conjunction)
   (with-open-file (fs pathname :if-does-not-exist nil)
@@ -569,21 +576,6 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
       (do-one system))
     answer))
 
-(defmethod all-files-in-system ((system asdf/system:system) &optional (include-components? nil))
-  (let ((answer nil) (traversed nil))
-    (labels ((do-one (component)
-	       (unless (member component traversed)
-		 (push component traversed)
-		 (typecase component
-		  (asdf/lisp-action:cl-source-file
-		   (pushnew (translate-logical-pathname (asdf/component:component-pathname component)) answer))
-		  ((or asdf/system:system asdf/component:component)
-		   (when (or (typep component 'asdf/component:component) include-components?)
-		     (let ((children (asdf/component:component-children component)))
-		       (loop for thing in children do (do-one thing)))))))))
-      (do-one system))
-    answer))
-
 (define-command (com-find-string :command-table lisp-commands :name t)
     ((strings '(sequence string)
 	      :prompt "substring(s)"
@@ -595,7 +587,7 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 	    :prompt "file(s)"
 	    ;; :documentation "Files to search through"
             )
-     (systems '(sequence (type-or-string asdf-system))
+     (systems '(sequence asdf-system)
 	      :default nil
 	      :prompt "systems(s)"
 	      ;; :documentation "Systems to search through"

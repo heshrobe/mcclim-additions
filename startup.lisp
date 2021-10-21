@@ -3,13 +3,14 @@
 (in-package :common-lisp-user)
 
 ;;; The following lines added by ql:add-to-init-file:
-#-quicklisp
-(let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp"
-                                       (user-homedir-pathname))))
-  (when (probe-file quicklisp-init)
-    (load quicklisp-init)))
-
-
+(unless (find-package :quicklisp)
+  (format t "~%Instaliing Quicklisp")
+  (let ((quicklisp-init (merge-pathnames "quicklisp/setup.lisp"
+                                         (user-homedir-pathname))))
+    (when (probe-file quicklisp-init)
+      (load quicklisp-init)
+      (funcall (intern (string-upcase "add-to-init-file") (find-package :quicklisp)))
+      )))
 
 
 (defun startup ()
