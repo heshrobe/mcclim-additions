@@ -532,7 +532,9 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 ;;; in a system, we can map over the depends-on field but only follow those that are
 ;;; Case 1.
 
-(export (intern (string-upcase "subsystem") 'asdf/interface) 'asdf/interface)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (export (intern (string-upcase "subsystem") 'asdf/interface) 'asdf/interface))
+
 (defclass asdf:subsystem (asdf:system) ())
 
 (defun search-file (pathname stream strings conjunction)
