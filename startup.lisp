@@ -24,7 +24,7 @@
   (asdf:load-system :joshua)
   (load "~/joshua-dist/joshua/developer/joshua-developer.asd")
   (asdf:load-system :joshua-developer)
-  (load "~/Research-projects/attack-planning/code/aplan.asd")
+  (load "~/Research-Projects/attack-planning/code/aplan.asd")
   (asdf:load-system :aplan)
   (apply (intern (string-upcase "run-listener") (find-package 'clim-listener))
          '( :new-process t)))
