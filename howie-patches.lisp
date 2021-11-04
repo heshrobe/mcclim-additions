@@ -326,8 +326,31 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 ;;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;; This is to guard against the present method used in clim-listener's asdf-system
+;;; ptype.
+
+(define-presentation-type my-asdf-system (loaded-p)
+  :inherit-from '(asdf-system))
+
+
+(define-presentation-method accept ((type my-asdf-system) stream
+                                    (view textual-view) &key)
+  (multiple-value-bind (object success)
+      (completing-from-suggestions (stream)
+        (dolist (system (if loaded-p (asdf-loaded-systems) (asdf::registered-systems*)))
+          (suggest (asdf:coerce-name system) system)))
+    (if success
+        object
+        (simple-parse-error "Unknown system"))))
+
+(define-presentation-method present (object (type my-asdf-system) stream
+                                            (view textual-view)
+                                            &key)
+  (princ (asdf:coerce-name object) stream))
+
+
 (define-command (com-edit-system :command-table listener :name t)
-    ((system 'asdf-system
+    ((system '(my-asdf-system nil)
 	     :default-type 'system
 	     ;; :provide-default t
              )
@@ -574,9 +597,17 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 		  ((or asdf/system:system asdf/component:component)
 		   (when (or (typep component 'asdf/component:component) include-components?)
 		     (let ((children (asdf/component:component-children component)))
-		       (loop for thing in children do (do-one thing)))))))))
+		       (loop for thing in children do (do-one thing))))
+                   (when (typep component 'asdf/system:system)
+                     (let ((subsystems (loop for depended-on in (asdf/system:system-depends-on component)
+                                             for depended-on-system = (asdf:find-system depended-on)
+                                             when (typep depended-on-system 'asdf/system:subsystem)
+                                               collect depended-on-system)))
+                       (loop for subsystem in subsystems do (do-one subsystem))))
+                   )))))
       (do-one system))
     answer))
+
 
 (define-command (com-find-string :command-table lisp-commands :name t)
     ((strings '(sequence string)
@@ -589,7 +620,7 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 	    :prompt "file(s)"
 	    ;; :documentation "Files to search through"
             )
-     (systems '(sequence asdf-system)
+     (systems '(sequence my-asdf-system)
 	      :default nil
 	      :prompt "systems(s)"
 	      ;; :documentation "Systems to search through"
@@ -1424,7 +1455,6 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
   `(setf (find-class ',fspec) nil))
 
 
-
 ;;; This needs to get fixed
 (defmethod definition-undefining-form ((type (eql :defmethod)) fspec do-it?)
   (destructuring-bind (generic-function-name specializers qualifiers) fspec
@@ -1441,8 +1471,8 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
   (loop for specializer in specializers
         collect (cond
                   ((symbolp specializer) (list :class (find-class t)))
-                  ((eql (first (second specializer)) 'eql) (list :object (second (second specializer))))
-                  (t (find-class (second specializer))))))
+                  ((and (listp (second specializer)) (eql (first (second specializer)) 'eql)) (list :object (second (second specializer))))
+                  (t (list :class (find-class (second specializer)))))))
 
 ;;; Don't need this since the form parser macroexpands it and then treats it like a
 ;;; normal defmethod.  The only reason to have this is if you want to feed back

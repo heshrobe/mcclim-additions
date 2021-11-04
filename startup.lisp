@@ -16,14 +16,17 @@
 (defun startup ()
   (setq *compile-print* nil)
   (ql:quickload '(:mcclim :clim-listener :cl-json))
-  ;; load patches -- or are they merged into my-version branch
+
+  (load "~/joshua-dist/joshua/code/joshua.asd")
+  (asdf:load-system :joshua)
+
   (let ((sb-ext:*muffled-warnings* 'sb-kernel:redefinition-warning))
     (load "~/quicklisp/local-projects/mcclim-additions/mcclim-fixes.asd")
     (asdf:load-system :mcclim-fixes))
-  (load "~/joshua-dist/joshua/code/joshua.asd")
-  (asdf:load-system :joshua)
+
   (load "~/joshua-dist/joshua/developer/joshua-developer.asd")
   (asdf:load-system :joshua-developer)
+
   (load "~/Research-Projects/attack-planning/code/aplan.asd")
   (asdf:load-system :aplan)
   (apply (intern (string-upcase "run-listener") (find-package 'clim-listener))

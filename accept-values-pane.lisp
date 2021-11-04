@@ -186,6 +186,7 @@
                                     t))))
     (object)
   ;; this should be the query identifier and the new-calue
+
   (destructuring-bind (query-identifier new-value pane gadget stream) (rest object)
     (declare (ignore gadget stream))
     (list query-identifier new-value pane)))
@@ -198,7 +199,7 @@
 
 
 ;;; I need to let the guy who catches the event know what gadget (actually what pane) was clicked
-;;; I would be nice if we could use the shet keyword argument to throw-object-ptype but
+;;; I would be nice if we could use the sheet keyword argument to throw-object-ptype but
 ;;; that turns out not to work because the event created there doesn't specify graft-x and graft-y
 ;;; which are used if the sheet argument is passed in.  Trying to set them to 0 didn't help
 ;;; because then the presentation isn't findable and there's a much greater risk of screwing up
