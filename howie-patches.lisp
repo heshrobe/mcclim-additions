@@ -1401,7 +1401,7 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
   (let ((form (if (stringp definition-string) (from-string definition-string) definition-string)))
     (multiple-value-bind (fspec type) (form-parser (first form) form)
       (let ((answer (definition-undefining-form type fspec t)))
-        ;; this will just the undefning form into the minibuffer
+        ;; this will just print the undefning form into the minibuffer
         answer))))
 
 
