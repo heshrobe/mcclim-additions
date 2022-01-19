@@ -15,7 +15,7 @@
 
 (defun startup ()
   (setq *compile-print* nil)
-  (ql:quickload '(:mcclim :clim-listener :cl-json))
+  (ql:quickload '(:mcclim :clim-listener :cl-json :cl-yaml))
 
   (load "~/joshua-dist/joshua/code/joshua.asd")
   (asdf:load-system :joshua)
