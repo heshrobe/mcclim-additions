@@ -21,8 +21,8 @@
   (asdf:load-system :joshua)
 
   (let ((sb-ext:*muffled-warnings* 'sb-kernel:redefinition-warning))
-    (load "~/quicklisp/local-projects/mcclim-additions/mcclim-fixes.asd")
-    (asdf:load-system :mcclim-fixes))
+    (load "~/quicklisp/local-projects/mcclim-additions/mcclim-additions.asd")
+    (asdf:load-system :mcclim-additions))
 
   (load "~/joshua-dist/joshua/developer/joshua-developer.asd")
   (asdf:load-system :joshua-developer)
