@@ -329,16 +329,18 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 ;;; This is to guard against the present method used in clim-listener's asdf-system
 ;;; ptype.
 
-(define-presentation-type my-asdf-system (loaded-p)
+
+(define-presentation-type my-asdf-system ()
   :inherit-from '(asdf-system))
 
 
 (define-presentation-method accept ((type my-asdf-system) stream
                                     (view textual-view) &key)
-  (multiple-value-bind (object success)
+  (multiple-value-bind (object success input)
       (completing-from-suggestions (stream)
-        (dolist (system (if loaded-p (asdf-loaded-systems) (asdf::registered-systems*)))
+        (dolist (system (asdf::registered-systems*))
           (suggest (asdf:coerce-name system) system)))
+    (declare (ignore input))
     (if success
         object
         (simple-parse-error "Unknown system"))))
@@ -350,7 +352,7 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
 
 
 (define-command (com-edit-system :command-table listener :name t)
-    ((system '(my-asdf-system nil)
+    ((system '((my-asdf-system nil))
 	     :default-type 'system
 	     ;; :provide-default t
              )
@@ -636,6 +638,9 @@ allowed somewhere but allowed elsewhere but maybe that's resolved
   (with-frame-standard-output (stream)
     (when files
       (dolist (pathname files)
+        (setq pathname (pathname pathname))
+        (when (typep pathname 'logical-pathname)
+          (setq pathname (translate-logical-pathname pathname)))
 	(if (wild-pathname-p pathname)
 	  (dolist (p (directory pathname))
 	    (search-file p stream strings conjunction))
